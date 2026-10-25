@@ -296,7 +296,7 @@ GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=openai/gpt-oss-20b
 GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
 
-PORT=8787
+PORT=8788
 CLIENT_ORIGIN=http://localhost:5173
 ```
 
@@ -358,12 +358,30 @@ GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
 
 All configuration is handled through environment variables.
 
+### Automatic local and online routing
+
+Jerry uses a lightweight server-side keyword classifier and does not call a paid model just to decide where to send a message. Automatic mode sends ordinary requests to Ollama. Requests for current or live facts use a no-key DuckDuckGo web search and pass the returned sources to Ollama. This free chat and search setup needs no model API key. If search or Ollama is unavailable, Jerry returns an error instead of presenting an unverified answer as current.
+
+In Chat, open conversation settings to choose Automatic, Local AI, or Online AI. Automatic mode sends ordinary questions to local Ollama and current-information questions to the free hosted Jerry service with search results included. Sign in to the hosted service in Chat settings; Jerry keeps only the returned session cookie in memory and does not save your password. Local-only privacy overrides routing and blocks current-information requests.
+
+Set `ONLINE_AI_BASE_URL` to the free hosted Jerry address, install and start local Ollama for ordinary messages, and leave `AI_PROVIDER=auto`. No AI API key is required. Live requests use free DuckDuckGo search with the hosted AI; if search or the hosted service fails, Jerry shows an error instead of guessing. Optional Groq or Lyzr keys remain supported, but aren’t required for this route. `AI_REQUEST_TIMEOUT_MS` and `AI_DAILY_REQUEST_LIMIT` bound requests. `/api/health` reports Ollama and model availability.
+
 | Variable | Description | Default |
 |---|---|---|
-| `GROQ_API_KEY` | Groq API key | Required |
+| `GROQ_API_KEY` | Optional Groq key for remote AI and voice transcription | Optional |
+| `LYZR_API_KEY` | Optional Lyzr key for remote AI | Optional |
 | `GROQ_MODEL` | Chat model | `openai/gpt-oss-20b` |
 | `GROQ_TRANSCRIBE_MODEL` | Speech-to-text model | `whisper-large-v3-turbo` |
-| `PORT` | Express server port | `8787` |
+| `AI_PROVIDER` | Routing mode | `auto` |
+| `ONLINE_AI_BASE_URL` | Free hosted Jerry service | `http://192.168.1.8:8787` |
+| `WEB_SEARCH_URL` | Public no-key search page | DuckDuckGo |
+| `OLLAMA_API_URL` | Local Ollama chat endpoint | `http://127.0.0.1:11434/api/chat` |
+| `OLLAMA_MODEL` | Installed local model | `qwen2.5-coder:7b` |
+| `OLLAMA_FALLBACK` | Use local AI when non-live online requests fail | `true` |
+| `GROQ_FALLBACK` | Allow online fallback when local AI is unavailable | `true` |
+| `AI_REQUEST_TIMEOUT_MS` | Provider request timeout | `45000` |
+| `AI_DAILY_REQUEST_LIMIT` | Per-process daily request limit | `1000` |
+| `PORT` | Express server port | `8788` |
 | `CLIENT_ORIGIN` | Frontend origin | — |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | Optional |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Optional |
@@ -422,7 +440,7 @@ Jerry can use Google OAuth to send emails on your behalf.
 Configure your Google OAuth application with:
 
 ```text
-http://localhost:8787/api/gmail/callback
+http://localhost:8788/api/gmail/callback
 ```
 
 Then add:
@@ -463,10 +481,17 @@ Recommended production configuration:
 
 ```env
 NODE_ENV=production
-PORT=8787
+PORT=8788
 CLIENT_ORIGIN=https://your-domain.com
-GROQ_API_KEY=your_secret_key
 ```
+
+## Desktop app
+
+Jerry uses the same React interface and Express backend in its desktop app. Run `npm run desktop:dev` during development and `npm run desktop:build` to package an installer for the current operating system. The desktop app starts its local API on a free loopback port and opens it in a protected Electron window, so it can run beside the web app. Build on macOS, Windows, and Linux separately to produce native installers for each system.
+
+## Render deployment
+
+The repository includes `render.yaml` for a free Node web service. Create the service from this Blueprint and set `ONLINE_AI_BASE_URL` to a public HTTPS address for the free hosted Jerry service. A private `192.168.x.x` address cannot be reached from Render. The local Ollama endpoint also must be reachable by the service or the signed-in hosted Jerry session must be available for fallback.
 
 ---
 
