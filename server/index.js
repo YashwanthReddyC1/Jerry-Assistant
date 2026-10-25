@@ -13,23 +13,49 @@ const app = express();
 const port = Number(process.env.PORT || 8787);
 const apiUrl = process.env.LYZR_API_URL || 'https://agent-prod.studio.lyzr.ai/v3/inference/chat/';
 const agentId = process.env.LYZR_AGENT_ID || '6a9e7cce02267ec426e8e216';
-const aiProvider = (process.env.AI_PROVIDER || 'groq').toLowerCase();
+const aiProvider = (process.env.AI_PROVIDER || 'ollama').toLowerCase();
 const groqUrl = process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions';
 const groqTranscribeUrl = process.env.GROQ_TRANSCRIBE_URL || 'https://api.groq.com/openai/v1/audio/transcriptions';
 const configuredGroqModel = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 const groqModel = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'].includes(configuredGroqModel) ? 'openai/gpt-oss-20b' : configuredGroqModel;
-const groqMaxTokens = Number(process.env.GROQ_MAX_TOKENS || 512);
 const groqHistoryLimit = Number(process.env.GROQ_HISTORY_LIMIT || 8);
 const groqTranscribeModel = process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo';
 const localFallbackEnabled = process.env.LOCAL_FALLBACK !== 'false';
 const ollamaUrl = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434/api/chat';
-const ollamaModel = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b';
+const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.2:3b';
+const dailyMessageLimitValue = Number.parseInt(process.env.DAILY_MESSAGE_LIMIT ?? '30', 10);
+const responseTokenLimitValue = Number.parseInt(process.env.RESPONSE_TOKEN_LIMIT ?? '256', 10);
+const chatCooldownMsValue = Number.parseInt(process.env.CHAT_COOLDOWN_MS ?? '2000', 10);
+const dailyMessageLimit = Number.isFinite(dailyMessageLimitValue) ? Math.max(0, dailyMessageLimitValue) : 30;
+const responseTokenLimit = Number.isFinite(responseTokenLimitValue) ? Math.max(1, responseTokenLimitValue) : 256;
+const chatCooldownMs = Number.isFinite(chatCooldownMsValue) ? Math.max(0, chatCooldownMsValue) : 2000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, '../dist');
 let gmailTokens = null;
 let gmailState = null;
 const groqHistory = new Map();
 const ollamaHistory = new Map();
+const dailyUsage = new Map();
+const lastChatAt = new Map();
+
+function chatLimitError(userId) {
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const usage = dailyUsage.get(userId);
+  if (usage?.date !== today) dailyUsage.set(userId, { date: today, count: 0 });
+  const currentUsage = dailyUsage.get(userId);
+  if (dailyMessageLimit > 0 && currentUsage.count >= dailyMessageLimit) {
+    return { status: 429, error: `Daily message limit reached (${dailyMessageLimit}). Try again tomorrow.` };
+  }
+  const lastAt = lastChatAt.get(userId) || 0;
+  const retryAfterMs = chatCooldownMs - (now - lastAt);
+  if (retryAfterMs > 0) {
+    return { status: 429, error: `Please wait ${Math.ceil(retryAfterMs / 1000)} second(s) before sending another message.`, retryAfterMs };
+  }
+  currentUsage.count += 1;
+  lastChatAt.set(userId, now);
+  return null;
+}
 
 function localFallbackReply(message) {
   const text = message.trim();
@@ -66,7 +92,7 @@ app.post('/api/transcribe', express.raw({ type: /^audio\//, limit: '15mb' }), as
   }
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, configured: aiProvider === 'groq' ? Boolean(process.env.GROQ_API_KEY) : Boolean(process.env.LYZR_API_KEY), provider: aiProvider, agentId }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, configured: aiProvider === 'ollama' || aiProvider === 'local' || (aiProvider === 'groq' ? Boolean(process.env.GROQ_API_KEY) : Boolean(process.env.LYZR_API_KEY)), provider: aiProvider, model: aiProvider === 'ollama' ? ollamaModel : undefined, limits: { dailyMessages: dailyMessageLimit, responseTokens: responseTokenLimit, cooldownMs: chatCooldownMs }, agentId }));
 
 app.get('/api/gmail/status', async (_req, res) => {
   if (!gmailTokens) return res.json({ connected: false });
@@ -111,6 +137,8 @@ app.post('/api/chat', async (req, res) => {
   const { user_id: userId, session_id: sessionId, message } = req.body || {};
   if (!['groq', 'ollama', 'local'].includes(aiProvider) && !process.env.LYZR_API_KEY) return res.status(503).json({ error: 'The assistant is not configured yet. Add LYZR_API_KEY to your environment.' });
   if (!userId || !sessionId || typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'user_id, session_id, and a non-empty message are required.' });
+  const limitError = chatLimitError(userId);
+  if (limitError) return res.status(limitError.status).json({ error: limitError.error, ...(limitError.retryAfterMs ? { retryAfterMs: limitError.retryAfterMs } : {}) });
   try {
     if (aiProvider === 'local') return res.json({ response: localFallbackReply(message), provider: 'local' });
     if (aiProvider === 'ollama') {
@@ -120,7 +148,7 @@ app.post('/api/chat', async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 45000);
       let ollamaResponse;
       try {
-        ollamaResponse = await fetch(ollamaUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ model: ollamaModel, messages: history.slice(-6), stream: false, options: { num_predict: 256, num_ctx: 2048, temperature: 0.5 }, think: false }) });
+        ollamaResponse = await fetch(ollamaUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ model: ollamaModel, messages: history.slice(-6), stream: false, options: { num_predict: responseTokenLimit, num_ctx: 2048, temperature: 0.5 }, think: false }) });
       } finally { clearTimeout(timeout); }
       const ollamaRaw = await ollamaResponse.text();
       let ollamaData; try { ollamaData = JSON.parse(ollamaRaw); } catch { ollamaData = {}; }
@@ -135,7 +163,7 @@ app.post('/api/chat', async (req, res) => {
       if (!process.env.GROQ_API_KEY) return res.status(503).json({ error: 'Jerry is set to Groq, but GROQ_API_KEY is missing from your .env file.' });
       const history = groqHistory.get(sessionId) || [];
       history.push({ role: 'user', content: message.trim().slice(0, 4000) });
-      const groqResponse = await fetch(groqUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify({ model: groqModel, messages: history.slice(-groqHistoryLimit), max_tokens: groqMaxTokens, temperature: 0.5, user: userId }) });
+      const groqResponse = await fetch(groqUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: JSON.stringify({ model: groqModel, messages: history.slice(-groqHistoryLimit), max_tokens: responseTokenLimit, temperature: 0.5, user: userId }) });
       const groqRaw = await groqResponse.text();
       let groqData; try { groqData = JSON.parse(groqRaw); } catch { groqData = {}; }
       if (!groqResponse.ok) {

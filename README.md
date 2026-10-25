@@ -9,7 +9,7 @@
 </h3>
 
 <p align="center">
-  Built with React, Vite, Node.js, Express, and Groq.
+  Built with React, Vite, Node.js, Express, and Ollama.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-Backend-000000?style=flat-square&logo=express&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-AI-F55036?style=flat-square)
+![Ollama](https://img.shields.io/badge/Ollama-Local%20AI-111111?style=flat-square)
 
 </p>
 
@@ -58,14 +58,14 @@ It can handle conversations, process voice input, work with files, organize note
 
 ### 💬 AI Chat
 
-Have natural conversations with Jerry using a Groq-powered language model.
+Have private conversations with Jerry using a model running locally through Ollama. No paid inference API key is needed for chat.
 
 </td>
 <td width="50%">
 
 ### 🎙️ Voice Input
 
-Speak naturally and convert your voice into text using Whisper.
+Record voice and convert it into text using Groq Whisper when an optional Groq key is configured.
 
 </td>
 </tr>
@@ -191,7 +191,7 @@ React UI
   ▼
 Express API
   │
-  ├──────► Groq ──────► AI Response
+  ├──────► Ollama ────► AI Response
   │
   ├──────► Whisper ───► Transcription
   │
@@ -207,8 +207,8 @@ Express API
 | 🎨 Frontend | React |
 | ⚡ Build Tool | Vite |
 | 🖥️ Backend | Node.js + Express |
-| 🧠 AI | Groq API |
-| 🎙️ Speech-to-Text | Whisper |
+| 🧠 AI | Ollama, running locally |
+| 🎙️ Speech-to-Text | Optional Groq Whisper API |
 | 📧 Email | Gmail API + Google OAuth |
 | 🔐 Configuration | Environment Variables |
 | 🚀 Deployment | Node.js-compatible hosting |
@@ -252,7 +252,7 @@ Make sure you have:
 
 - **Node.js 18+**
 - **npm**
-- A **Groq API key**
+- **Ollama for Windows**
 
 Verify Node.js:
 
@@ -263,16 +263,27 @@ npm --version
 
 ---
 
-## 2. Clone
+## 2. Install Ollama and download a model
+
+In PowerShell, install Ollama using its official installer, then download the modest 3B Llama model. The model files use about 2 GB of disk space; generation speed depends on your CPU and GPU.
+
+```powershell
+irm https://ollama.com/install.ps1 | iex
+ollama pull llama3.2:3b
+```
+
+Ollama runs locally at `http://127.0.0.1:11434`.
+
+## 3. Clone
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/jerry.git
-cd jerry
+git clone https://github.com/YashwanthReddyC1/Jerry-Assistant.git
+cd Jerry-Assistant
 ```
 
 ---
 
-## 3. Configure Environment
+## 4. Configure Environment
 
 Create your local `.env` file.
 
@@ -288,21 +299,19 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Then configure:
+The defaults in `.env.example` already select local Ollama. No Groq or Lyzr key is needed for chat. Optionally add a Groq key only if you want the existing cloud voice transcription feature.
 
 ```env
-GROQ_API_KEY=your_groq_api_key
-
-GROQ_MODEL=openai/gpt-oss-20b
-GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
-
-PORT=8787
-CLIENT_ORIGIN=http://localhost:5173
+AI_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b
+DAILY_MESSAGE_LIMIT=30
+RESPONSE_TOKEN_LIMIT=256
+CHAT_COOLDOWN_MS=2000
 ```
 
 ---
 
-## 4. Install
+## 5. Install
 
 ```bash
 npm install
@@ -310,7 +319,7 @@ npm install
 
 ---
 
-## 5. Start
+## 6. Start
 
 ```bash
 npm run dev
@@ -328,7 +337,7 @@ http://localhost:5173
 
 # 🎙️ Voice Input
 
-Jerry includes built-in voice input powered by Whisper.
+Jerry keeps its existing voice recording feature. Transcription currently uses Groq Whisper, so it needs internet access and an optional `GROQ_API_KEY`; local chat continues to work without it. Voice recordings are sent to Groq only when you use this feature.
 
 ### Workflow
 
@@ -346,7 +355,7 @@ Jerry includes built-in voice input powered by Whisper.
 ➤ Send
 ```
 
-Default model:
+Optional transcription model:
 
 ```env
 GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
@@ -360,13 +369,22 @@ All configuration is handled through environment variables.
 
 | Variable | Description | Default |
 |---|---|---|
-| `GROQ_API_KEY` | Groq API key | Required |
-| `GROQ_MODEL` | Chat model | `openai/gpt-oss-20b` |
-| `GROQ_TRANSCRIBE_MODEL` | Speech-to-text model | `whisper-large-v3-turbo` |
+| `AI_PROVIDER` | Chat provider (`ollama`, `groq`, `lyzr`, or `local`) | `ollama` |
+| `OLLAMA_MODEL` | Locally installed Ollama chat model | `llama3.2:3b` |
+| `OLLAMA_API_URL` | Ollama chat endpoint | `http://127.0.0.1:11434/api/chat` |
+| `DAILY_MESSAGE_LIMIT` | Accepted chat messages per browser user each UTC day; `0` disables the cap | `30` |
+| `RESPONSE_TOKEN_LIMIT` | Maximum generated tokens per chat response | `256` |
+| `CHAT_COOLDOWN_MS` | Minimum delay between messages from the same browser user | `2000` |
+| `GROQ_API_KEY` | Optional key for Groq chat or voice transcription | Empty |
+| `GROQ_MODEL` | Chat model when `AI_PROVIDER=groq` | `openai/gpt-oss-20b` |
+| `GROQ_TRANSCRIBE_MODEL` | Optional voice transcription model | `whisper-large-v3-turbo` |
+| `LYZR_API_KEY` | Optional key when `AI_PROVIDER=lyzr` | Not set |
 | `PORT` | Express server port | `8787` |
 | `CLIENT_ORIGIN` | Frontend origin | — |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | Optional |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Optional |
+
+Usage counters and cooldowns are held in server memory and reset when the server restarts. For this single-user local setup they provide practical configurable limits; this app does not include account authentication, so they are not suitable as abuse protection for a public multi-user deployment.
 
 ---
 
@@ -465,7 +483,8 @@ Recommended production configuration:
 NODE_ENV=production
 PORT=8787
 CLIENT_ORIGIN=https://your-domain.com
-GROQ_API_KEY=your_secret_key
+AI_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b
 ```
 
 ---
@@ -641,7 +660,7 @@ Then open a pull request.
 
 <p align="center">
 
-**React** · **Vite** · **Node.js** · **Express** · **Groq** · **Whisper**
+**React** · **Vite** · **Node.js** · **Express** · **Ollama** · **Groq Whisper (optional)**
 
 </p>
 
