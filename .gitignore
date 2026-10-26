@@ -1,7 +1,9 @@
 node_modules
+.npm-cache/
 .env
 .env.*
 !.env.example
+data/*.json
 dist
 .DS_Store
 npm-debug.log*
