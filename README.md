@@ -9,7 +9,7 @@
 </h3>
 
 <p align="center">
-  Built with React, Vite, Node.js, Express, and Groq.
+  Built with React, Vite, Node.js, Express, and local Ollama.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   •
   <a href="#-configuration">Configuration</a>
   •
-  <a href="#-deployment">Deployment</a>
+  <a href="#-run-locally">Run Locally</a>
   •
   <a href="#-roadmap">Roadmap</a>
 </p>
@@ -32,7 +32,7 @@
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-Backend-000000?style=flat-square&logo=express&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-AI-F55036?style=flat-square)
+![Ollama](https://img.shields.io/badge/Ollama-Local%20AI-111111?style=flat-square)
 
 </p>
 
@@ -58,14 +58,14 @@ It can handle conversations, process voice input, work with files, organize note
 
 ### 💬 AI Chat
 
-Have natural conversations with Jerry using a Groq-powered language model.
+Chat with a model running on your own computer through Ollama. Jerry uses Ollama by default and does not need a paid AI account or API key. Current information requests automatically search the web and include source links.
 
 </td>
 <td width="50%">
 
 ### 🎙️ Voice Input
 
-Speak naturally and convert your voice into text using Whisper.
+Dictate messages with Whisper running locally in your browser. No transcription API key is needed. The first use downloads the open-source speech model; later transcriptions run on your device.
 
 </td>
 </tr>
@@ -175,8 +175,8 @@ Keep API keys and sensitive credentials on the backend instead of exposing them 
                  │                  │                  │
                  ▼                  ▼                  ▼
           ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-          │   Groq AI   │    │   Whisper   │    │    Gmail    │
-          │    Chat     │    │    Voice    │    │    OAuth    │
+          │   Ollama    │    │ Browser     │    │    Gmail    │
+          │    Chat     │    │ Speech      │    │    OAuth    │
           └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
@@ -191,9 +191,9 @@ React UI
   ▼
 Express API
   │
-  ├──────► Groq ──────► AI Response
+  ├──────► Ollama ────► AI Response
   │
-  ├──────► Whisper ───► Transcription
+  ├──────► Browser speech recognition ───► Transcription
   │
   └──────► Gmail ─────► Email
 ```
@@ -207,11 +207,11 @@ Express API
 | 🎨 Frontend | React |
 | ⚡ Build Tool | Vite |
 | 🖥️ Backend | Node.js + Express |
-| 🧠 AI | Groq API |
-| 🎙️ Speech-to-Text | Whisper |
+| 🧠 AI | Ollama running locally (no API key) |
+| 🎙️ Speech-to-Text | Local Whisper model in your browser |
 | 📧 Email | Gmail API + Google OAuth |
 | 🔐 Configuration | Environment Variables |
-| 🚀 Deployment | Node.js-compatible hosting |
+| 🚀 App | Local web app and Electron desktop app |
 
 ---
 
@@ -252,7 +252,7 @@ Make sure you have:
 
 - **Node.js 18+**
 - **npm**
-- A **Groq API key**
+- **Ollama for macOS, Windows, or Linux**
 
 Verify Node.js:
 
@@ -263,16 +263,26 @@ npm --version
 
 ---
 
-## 2. Clone
+## 2. Install Ollama and download a model
+
+Install Ollama for your operating system from [ollama.com](https://ollama.com/download), then download the modest 3B Llama model. The model files use about 2 GB of disk space; generation speed depends on your CPU and GPU.
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/jerry.git
-cd jerry
+ollama pull llama3.2:3b
+```
+
+Ollama runs locally at `http://127.0.0.1:11434`.
+
+## 3. Clone
+
+```bash
+git clone https://github.com/YashwanthReddyC1/Jerry-Assistant.git
+cd Jerry-Assistant
 ```
 
 ---
 
-## 3. Configure Environment
+## 4. Configure Environment
 
 Create your local `.env` file.
 
@@ -288,21 +298,27 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Then configure:
+Ollama is the default. No cloud AI account or API key is required. Keep optional integrations disabled unless you configure their credentials.
+
+To analyze uploaded photos locally without an API key, install the free Ollama vision model with `ollama pull qwen2.5vl:3b` and set `OLLAMA_VISION_MODEL=qwen2.5vl:3b` in `.env`. Jerry uses this model for image attachments and keeps ordinary chat on `OLLAMA_MODEL`.
 
 ```env
-GROQ_API_KEY=your_groq_api_key
-
-GROQ_MODEL=openai/gpt-oss-20b
-GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
-
-PORT=8787
-CLIENT_ORIGIN=http://localhost:5173
+AI_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b
+OLLAMA_VISION_MODEL=qwen2.5vl:3b
+OLLAMA_VISION_CONTEXT_LENGTH=16384
+DAILY_MESSAGE_LIMIT=30
+RESPONSE_TOKEN_LIMIT=256
+CHAT_COOLDOWN_MS=2000
 ```
+
+### Automatic current web information
+
+Jerry automatically searches the web when a message asks for current or real-time facts. News and update questions use Google News RSS, limited to reports from the past 24 hours, and show clickable source links. Other current questions use DuckDuckGo. Neither search path needs an API key. Ordinary questions do not trigger a search. Keep `WEB_SEARCH_ENABLED=true`; turn it off only to disable all live lookups.
 
 ---
 
-## 4. Install
+## 5. Install
 
 ```bash
 npm install
@@ -310,7 +326,7 @@ npm install
 
 ---
 
-## 5. Start
+## 6. Start
 
 ```bash
 npm run dev
@@ -328,28 +344,20 @@ http://localhost:5173
 
 # 🎙️ Voice Input
 
-Jerry includes built-in voice input powered by Whisper.
+Jerry records audio in the browser and transcribes it with the open-source Whisper model running on your device. No audio is sent to Jerry’s server or to a paid transcription API. The first use downloads the model (an internet connection is needed); the browser then caches it for later use. Allow microphone access when prompted. Model download and transcription speed depend on your connection and device.
 
 ### Workflow
 
 ```text
 🎙️ Talk
    ↓
-🎤 Record
+🎤 Speak
    ↓
-⏹️ Stop
-   ↓
-☁️ Speech-to-Text
+🧠 Local Whisper transcription
    ↓
 📝 Text appears in message box
    ↓
 ➤ Send
-```
-
-Default model:
-
-```env
-GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
 ```
 
 ---
@@ -360,13 +368,30 @@ All configuration is handled through environment variables.
 
 | Variable | Description | Default |
 |---|---|---|
-| `GROQ_API_KEY` | Groq API key | Required |
-| `GROQ_MODEL` | Chat model | `openai/gpt-oss-20b` |
-| `GROQ_TRANSCRIBE_MODEL` | Speech-to-text model | `whisper-large-v3-turbo` |
+| `AI_PROVIDER` | Chat provider (`ollama`, `groq`, `lyzr`, or `local`) | `ollama` |
+| `OLLAMA_MODEL` | Locally installed Ollama chat model | `llama3.2:3b` |
+| `OLLAMA_VISION_MODEL` | Locally installed Ollama vision model for photo attachments | `qwen2.5vl:3b` |
+| `OLLAMA_VISION_CONTEXT_LENGTH` | Context window for local photo requests, bounded from 8,192 to 32,768 | `16384` |
+| `OLLAMA_API_URL` | Ollama chat endpoint | `http://127.0.0.1:11434/api/chat` |
+| `DAILY_MESSAGE_LIMIT` | Accepted chat messages per signed-in account each UTC day; `0` disables the cap | `30` |
+| `RESPONSE_TOKEN_LIMIT` | Maximum generated tokens per chat response | `256` |
+| `CHAT_COOLDOWN_MS` | Minimum delay between messages from the same signed-in account | `2000` |
+| `REQUIRE_APP_SIGN_IN` | Require Jerry email and password sign-in for chat and connected APIs | `false` |
+| `SESSION_SECRET` | HMAC secret for Jerry sign-in cookies; use 32+ random characters | Not set |
+| `SUPABASE_URL` | Supabase project URL used for persistent email/password accounts | Not set |
+| `SUPABASE_ANON_KEY` | Supabase public anon key used server-side for Supabase Auth | Not set |
+| `WEB_SEARCH_ENABLED` | Allow automatic search for current sources | `true` |
+| `GROQ_API_KEY` | Optional key for Groq chat | Empty |
+| `GROQ_MODEL` | Chat model when `AI_PROVIDER=groq` | `openai/gpt-oss-20b` |
+| `LYZR_API_KEY` | Optional key when `AI_PROVIDER=lyzr` | Not set |
 | `PORT` | Express server port | `8787` |
 | `CLIENT_ORIGIN` | Frontend origin | — |
+
+For local development, enabling `REQUIRE_APP_SIGN_IN=true` without Supabase credentials uses Jerry’s local account store at `data/local-users.json`; passwords are stored as salted scrypt hashes. That file is excluded from Git.
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | Optional |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Optional |
+
+Usage counters and cooldowns are held in server memory and reset when the server restarts. In public mode they are keyed by signed-in account; use a persistent shared store before running multiple server instances or relying on quotas for abuse prevention.
 
 ---
 
@@ -465,50 +490,15 @@ Recommended production configuration:
 NODE_ENV=production
 PORT=8787
 CLIENT_ORIGIN=https://your-domain.com
-GROQ_API_KEY=your_secret_key
+AI_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b
 ```
 
 ---
 
-# ☁️ Deployment
+# 🏠 Run Locally
 
-Jerry can run on most Node.js-compatible hosting platforms.
-
-### Supported deployment options
-
-```text
-┌─────────────┐
-│    GitHub   │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────┐
-│      Hosting Platform       │
-│                             │
-│  Render / Railway / Fly.io  │
-│  VPS / Other Node Hosts     │
-└──────────────┬──────────────┘
-               │
-               ▼
-        ┌──────────────┐
-        │    Jerry     │
-        │  Production  │
-        └──────────────┘
-```
-
-### Build command
-
-```bash
-npm install && npm run build
-```
-
-### Start command
-
-```bash
-npm start
-```
-
-Configure your production secrets through the hosting provider's environment-variable or secret-management system.
+Jerry is designed to run on your computer so its Ollama model and local account data stay on that device. Install Ollama and the models above, then start Jerry with `npm run dev` for browser use or `npm run desktop:dev` for the desktop app. Live web search is performed only for questions that need current information; AI responses use your local Ollama model.
 
 ---
 
@@ -641,7 +631,7 @@ Then open a pull request.
 
 <p align="center">
 
-**React** · **Vite** · **Node.js** · **Express** · **Groq** · **Whisper**
+**React** · **Vite** · **Node.js** · **Express** · **Ollama** · **Electron**
 
 </p>
 
